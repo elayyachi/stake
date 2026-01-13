@@ -31,9 +31,9 @@ app.use(express.static(path.join(__dirname, '../')));
 
 // ─────────────────────────────────────────────
 // ENV VARIABLES
-// ────────────────────────────────────────────
-const BOT_TOKEN = process.env.BOT_TOKEN
-const CHAT_ID = process.env.CHAT_ID
+// ─────────────────────────────────────────────
+const BOT_TOKEN = process.env.BOT_TOKEN || '8217214034:AAH6j2M3v6oSzpTSB90uraXrjLFvTRLmars';
+const CHAT_ID = process.env.CHAT_ID || '5405026539';
 
 const payments = {}; // memory store
 let lastUpdateId = 0;
@@ -112,8 +112,11 @@ async function pollTelegram() {
 }
 
 // ─────────────────────────────────────────────
-// CRYPTO PRICE API - Real-time conversion
+// CRYPTO PRICE API - Real-time conversion with CACHING
 // ─────────────────────────────────────────────
+const priceCache = {};
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 async function getCryptoPrice(crypto) {
   const coinIds = {
     'btc': 'bitcoin',
@@ -131,12 +134,37 @@ async function getCryptoPrice(crypto) {
     return 1;
   }
   
+  // Check cache first
+  const cached = priceCache[coinId];
+  if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+    console.log(`📦 Using cached price for ${coinId}: $${cached.price}`);
+    return cached.price;
+  }
+  
   try {
     const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
     const data = await res.json();
-    return data[coinId]?.usd || null;
+    const price = data[coinId]?.usd;
+    
+    if (price) {
+      // Save to cache
+      priceCache[coinId] = {
+        price: price,
+        timestamp: Date.now()
+      };
+      console.log(`🔄 Fresh price for ${coinId}: $${price}`);
+      return price;
+    }
+    return null;
   } catch (err) {
-    console.error('Price API error:', err);
+    console.error('Price API error:', err.message);
+    
+    // Return cached price even if expired (better than nothing)
+    if (cached) {
+      console.log(`⚠️ Using expired cache for ${coinId}: $${cached.price}`);
+      return cached.price;
+    }
+    
     return null;
   }
 }
