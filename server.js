@@ -31,7 +31,7 @@ app.use(express.static(path.join(__dirname, '../')));
 
 // ─────────────────────────────────────────────
 // ENV VARIABLES
-// ─────────────────────────────────────────────
+// ────────────────────────────────────────────
 const BOT_TOKEN = process.env.BOT_TOKEN
 const CHAT_ID = process.env.CHAT_ID
 
@@ -276,6 +276,53 @@ app.get('/api/status/:id', (req, res) => {
 // API: List all payments (admin)
 app.get('/api/payments', (req, res) => {
   res.json(payments);
+});
+
+// API: Manual approve (backup method)
+app.get('/api/approve/:id', async (req, res) => {
+  const paymentId = req.params.id;
+  
+  if (payments[paymentId]) {
+    payments[paymentId].status = 'approved';
+    console.log(`✅ Payment ${paymentId} APPROVED via API`);
+    
+    // Send confirmation to Telegram
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        text: `✅ Payment ${paymentId} APPROVED! User can now download.`
+      })
+    });
+    
+    res.json({ success: true, message: `Payment ${paymentId} approved` });
+  } else {
+    res.json({ success: false, error: 'Payment not found' });
+  }
+});
+
+// API: Manual reject (backup method)
+app.get('/api/reject/:id', async (req, res) => {
+  const paymentId = req.params.id;
+  
+  if (payments[paymentId]) {
+    payments[paymentId].status = 'rejected';
+    console.log(`❌ Payment ${paymentId} REJECTED via API`);
+    
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        text: `❌ Payment ${paymentId} REJECTED!`
+      })
+    });
+    
+    res.json({ success: true, message: `Payment ${paymentId} rejected` });
+  } else {
+    res.json({ success: false, error: 'Payment not found' });
+  }
 });
 
 // ─────────────────────────────────────────────
