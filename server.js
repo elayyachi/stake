@@ -32,8 +32,8 @@ app.use(express.static(path.join(__dirname, '../')));
 // ─────────────────────────────────────────────
 // ENV VARIABLES
 // ─────────────────────────────────────────────
-const BOT_TOKEN = process.env.BOT_TOKEN || '8217214034:AAH6j2M3v6oSzpTSB90uraXrjLFvTRLmars';
-const CHAT_ID = process.env.CHAT_ID || '5405026539';
+const BOT_TOKEN = process.env.BOT_TOKEN
+const CHAT_ID = process.env.CHAT_ID
 
 const payments = {}; // memory store
 let lastUpdateId = 0;
