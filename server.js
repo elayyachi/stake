@@ -112,6 +112,48 @@ async function pollTelegram() {
 }
 
 // ─────────────────────────────────────────────
+// CRYPTO PRICE API - Real-time conversion
+// ─────────────────────────────────────────────
+async function getCryptoPrice(crypto) {
+  const coinIds = {
+    'btc': 'bitcoin',
+    'eth': 'ethereum',
+    'ltc': 'litecoin',
+    'usdt-trc20': 'tether',
+    'usdt-erc20': 'tether',
+    'usdt-bep20': 'tether'
+  };
+  
+  const coinId = coinIds[crypto.toLowerCase()];
+  
+  // USDT = 1:1 with USD
+  if (coinId === 'tether') {
+    return 1;
+  }
+  
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`);
+    const data = await res.json();
+    return data[coinId]?.usd || null;
+  } catch (err) {
+    console.error('Price API error:', err);
+    return null;
+  }
+}
+
+function formatCryptoAmount(amount, crypto) {
+  const decimals = {
+    'btc': 8,
+    'eth': 6,
+    'ltc': 6,
+    'usdt-trc20': 2,
+    'usdt-erc20': 2,
+    'usdt-bep20': 2
+  };
+  return amount.toFixed(decimals[crypto.toLowerCase()] || 6);
+}
+
+// ─────────────────────────────────────────────
 // ROUTES
 // ─────────────────────────────────────────────
 
@@ -125,8 +167,31 @@ app.post('/api/notify', async (req, res) => {
   try {
     const { plan, price, crypto: coin, amount } = req.body;
 
-    if (!plan || !price || !coin || !amount) {
+    if (!plan || !price || !coin) {
       return res.status(400).json({ success: false, error: 'Missing fields' });
+    }
+
+    const priceUSD = parseFloat(price);
+    
+    // Get real-time crypto price
+    const cryptoPrice = await getCryptoPrice(coin);
+    
+    let exactAmount;
+    let cryptoSymbol = coin.toUpperCase().replace('-', ' ');
+    
+    if (cryptoPrice) {
+      exactAmount = formatCryptoAmount(priceUSD / cryptoPrice, coin);
+    } else {
+      // Fallback prices if API fails
+      const fallbackPrices = {
+        'btc': 100000,
+        'eth': 3300,
+        'ltc': 100,
+        'usdt-trc20': 1,
+        'usdt-erc20': 1,
+        'usdt-bep20': 1
+      };
+      exactAmount = formatCryptoAmount(priceUSD / fallbackPrices[coin.toLowerCase()], coin);
     }
 
     const paymentId = 'PAY-' + crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -134,18 +199,19 @@ app.post('/api/notify', async (req, res) => {
     payments[paymentId] = { 
       status: 'pending',
       plan,
-      price,
+      price: priceUSD,
       crypto: coin,
-      amount,
+      exactAmount,
       createdAt: new Date()
     };
 
     const message = `🔔 *NEW PAYMENT REQUEST*
 
 📦 *Plan:* ${plan}
-💰 *Price:* $${price}
-🪙 *Crypto:* ${coin.toUpperCase()}
-🔢 *Amount:* ${amount}
+💰 *Price:* $${priceUSD}
+🪙 *Crypto:* ${cryptoSymbol}
+🔢 *Amount:* ${exactAmount} ${cryptoSymbol}
+💵 *Rate:* 1 ${cryptoSymbol} = $${cryptoPrice ? cryptoPrice.toLocaleString() : 'N/A'}
 🆔 *ID:* \`${paymentId}\`
 ⏰ *Time:* ${new Date().toLocaleString()}
 
@@ -163,11 +229,35 @@ _Reply with:_
       })
     });
 
-    console.log(`📩 New payment request: ${paymentId}`);
-    res.json({ success: true, paymentId });
+    console.log(`📩 New payment request: ${paymentId} - ${exactAmount} ${cryptoSymbol}`);
+    res.json({ success: true, paymentId, exactAmount, cryptoSymbol });
 
   } catch (err) {
     console.error('Notify error:', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// API: Get real-time crypto price
+app.get('/api/price/:crypto/:usd', async (req, res) => {
+  try {
+    const { crypto, usd } = req.params;
+    const priceUSD = parseFloat(usd);
+    
+    const cryptoPrice = await getCryptoPrice(crypto);
+    
+    if (cryptoPrice) {
+      const exactAmount = formatCryptoAmount(priceUSD / cryptoPrice, crypto);
+      res.json({ 
+        success: true, 
+        exactAmount, 
+        rate: cryptoPrice,
+        crypto: crypto.toUpperCase()
+      });
+    } else {
+      res.json({ success: false, error: 'Could not fetch price' });
+    }
+  } catch (err) {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
